@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- SimHub.Plugins.dll is built against .NET Framework 4.8, so this must
+         match or be higher. If your SimHub install is a newer .NET 8 build
+         instead, change this to net8.0-windows (UseWPF below already applies). -->
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>SimHub.Plugin.TapoSwitch</AssemblyName>
+    <RootNamespace>SimHub.Plugin.TapoSwitch</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64;x86;AnyCPU</Platforms>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <!-- Explicit framework references - some SDK-style .NET Framework projects
+       don't pull these in implicitly. -->
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Net" />
+    <Reference Include="System.Security" />
+  </ItemGroup>
+
+  <!--
+    SimHub itself is not distributed on NuGet. Point these at the DLLs inside
+    your actual SimHub install folder (typically C:\Program Files (x86)\SimHub).
+    Adjust HintPath as needed for your machine.
+  -->
+  <ItemGroup>
+    <Reference Include="SimHub.Plugins">
+      <HintPath>C:\Program Files (x86)\SimHub\SimHub.Plugins.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GameReaderCommon">
+      <HintPath>C:\Program Files (x86)\SimHub\GameReaderCommon.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SimHub.Logging">
+      <HintPath>C:\Program Files (x86)\SimHub\SimHub.Logging.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="log4net">
+      <HintPath>C:\Program Files (x86)\SimHub\log4net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Drop the built DLL straight into SimHub's folder for quick testing.
+       Comment this out if you'd rather copy it manually. -->
+  <Target Name="CopyToSimHub" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+          DestinationFolder="C:\Program Files (x86)\SimHub\"
+          SkipUnchangedFiles="true"
+          ContinueOnError="true" />
+  </Target>
+
+</Project>

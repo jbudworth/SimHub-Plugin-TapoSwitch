@@ -1,0 +1,130 @@
+<UserControl x:Class="SimHub.Plugin.TapoSwitch.Settings.SettingsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:styles="clr-namespace:SimHub.Plugins.Styles;assembly=SimHub.Plugins"
+             mc:Ignorable="d"
+             d:DesignHeight="520" d:DesignWidth="880">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Tapo / TP-Link Smart Switches"
+                       FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+
+            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <styles:SHButtonSecondary Height="28" VerticalAlignment="Center" Click="Export_Click">Export</styles:SHButtonSecondary>
+                <styles:SHButtonSecondary Height="28" VerticalAlignment="Center" Margin="8,0,0,0" Click="Import_Click">Import</styles:SHButtonSecondary>
+                <styles:SHButtonPrimary Height="28" VerticalAlignment="Center" Margin="8,0,0,0" Click="Save_Click">Save settings</styles:SHButtonPrimary>
+            </StackPanel>
+
+            <!-- Full-width info text, spanning under both the title and the buttons above. -->
+            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap"
+                       Margin="0,8,0,0" Opacity="0.8">
+                Add each switch below and pick its protocol: "Legacy" for older Kasa/TP-Link
+                plugs (HS100/HS103/HS105/HS110/HS200 etc - no login needed), or "Klap" for
+                Tapo plugs (P100/P110 etc) or any Kasa device updated to KLAP firmware, which
+                need the Tapo account email/password. Not sure which one? Try Legacy first -
+                if Test fails, switch to Klap and fill in the account credentials.
+                After saving, an On / Off / Toggle action becomes available for each switch
+                under Controls and Events &gt; Custom actions &gt; TapoSwitch, where you can
+                bind it to any button, key, or event.
+            </TextBlock>
+        </Grid>
+
+        <!-- Auto-height row: the bordered section sizes to its content, so it
+             grows/shrinks as switches are added or removed rather than being
+             stretched to fill leftover space. -->
+        <Border Grid.Row="1" BorderBrush="{DynamicResource AccentColorBrush}" BorderThickness="1"
+                CornerRadius="4" Margin="0,0,0,12">
+            <styles:SHSection Title="Switches" ShowSeparator="True">
+                <StackPanel>
+                    <!-- No explicit Height: a DataGrid with no fixed/starred
+                         height sizes itself to show every row rather than
+                         scrolling internally, which is what lets the Border
+                         around it grow and shrink with the row count. -->
+                    <DataGrid x:Name="DevicesGrid" AutoGenerateColumns="False"
+                              ItemsSource="{Binding Devices}" CanUserAddRows="False"
+                              CanUserDeleteRows="False" CanUserResizeColumns="True"
+                              HeadersVisibility="Column" SelectionMode="Single" RowHeight="36"
+                              HorizontalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
+                            <DataGridTextColumn Header="IP Address" Binding="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" Width="110"/>
+                            <DataGridTemplateColumn Header="Protocol" Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ComboBox SelectedValuePath="Content"
+                                                  SelectedValue="{Binding ProtocolName, UpdateSourceTrigger=PropertyChanged}">
+                                            <ComboBoxItem Content="Legacy"
+                                                          ToolTip="Older HS100/HS103/HS105/HS110/HS200 etc. Port 9999, no login."/>
+                                            <ComboBoxItem Content="Klap"
+                                                          ToolTip="Tapo P100/P110 etc, or Kasa devices updated to KLAP firmware. Needs Tapo account login."/>
+                                        </ComboBox>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Email (Klap)" Binding="{Binding Email, UpdateSourceTrigger=PropertyChanged}" Width="140"/>
+                            <DataGridTemplateColumn Header="Password" Width="90" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding PasswordDisplay}" VerticalAlignment="Center" Margin="4,0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Last Status" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding LastStatus}" VerticalAlignment="Center"
+                                                   Margin="4,0" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <!-- Width="Auto" measured unreliably against SHButtonSecondary's
+                                 own control template (the Remove button kept clipping), so
+                                 this uses a fixed width generous enough for all three buttons
+                                 regardless of exactly how wide they render. -->
+                            <DataGridTemplateColumn Header="" Width="300">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center">
+                                            <styles:SHButtonSecondary Height="28" VerticalAlignment="Center"
+                                                                      Margin="0,0,6,0" Click="TestDevice_Click">Test</styles:SHButtonSecondary>
+                                            <styles:SHButtonSecondary Height="28" VerticalAlignment="Center"
+                                                                      Margin="0,0,6,0" Click="PasswordButton_Click">Password</styles:SHButtonSecondary>
+                                            <styles:SHButtonSecondary Height="28" VerticalAlignment="Center"
+                                                                      Click="RemoveDevice_Click">Remove</styles:SHButtonSecondary>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Add sits inside the same border/section as the grid,
+                         directly below it. -->
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <styles:SHButtonSecondary Height="28" VerticalAlignment="Center" Click="AddDevice_Click">Add</styles:SHButtonSecondary>
+                    </StackPanel>
+                </StackPanel>
+            </styles:SHSection>
+        </Border>
+
+        <TextBlock Grid.Row="2" x:Name="StatusText" TextWrapping="Wrap"/>
+    </Grid>
+</UserControl>

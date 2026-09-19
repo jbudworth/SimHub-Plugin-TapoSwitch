@@ -72,29 +72,6 @@ Settings/PasswordDialog.xaml*  Standalone password entry dialog (see note in Set
    `.csproj` if you'd rather copy it yourself).
 5. Restart SimHub. The plugin appears under Settings as **Tapo Smart Switch**.
 
-### A note on how far this has been verified
-
-I don't have a Windows box or a physical Tapo device in this environment, so
-I could not compile this against the real SimHub SDK or test it against
-actual hardware. Two parts of this code rest on different footing:
-
-- **The KLAP crypto and HTTP handshake** (`KlapCipher.cs`, `TapoClient.cs`)
-  is ported line-for-line from the reference implementation in the
-  [python-kasa](https://github.com/python-kasa/python-kasa) project's
-  `klaptransport.py`, which is well-tested against real devices by that
-  community. I'm confident in this part.
-- **The exact SimHub SDK call shapes** - `this.AddAction(...)`,
-  `this.AttachDelegate(...)`, `this.ReadCommonSettings/SaveCommonSettings`,
-  and the `IWPFSettingsV2` members - follow the long-standing, commonly
-  documented pattern used across community SimHub plugins, but SimHub has
-  changed small details of these APIs between versions, and I can't check
-  your installed version's exact signatures from here. If the build fails on
-  one of these calls, it's almost always a same-named method with a slightly
-  different overload, check `SimHub.Plugins.dll` (via Visual Studio's
-  "Go to Definition"/Object Browser) and adjust the call to match. The core
-  device logic in `Tapo/` doesn't depend on any of this and won't need
-  changes.
-
 ## Setting up a switch
 
 1. Register the switch in the **Tapo app** as usual (this is unavoidable,
@@ -105,9 +82,9 @@ actual hardware. Two parts of this code rest on different footing:
    recommended so the IP doesn't change.
 3. In SimHub, go to **Settings → Tapo Smart Switch**, click **Add**,
    and fill in:
-   - **Name** – anything descriptive (used to build action names)
-   - **IP Address** – the switch's LAN IP
-   - **Protocol** – **Legacy** for older Kasa/TP-Link plugs (try this first if
+   - **Name** - anything descriptive (used to build action names)
+   - **IP Address** - the switch's LAN IP
+   - **Protocol** - **Legacy** for older Kasa/TP-Link plugs (try this first if
      unsure - it needs no credentials), or **Klap** for Tapo plugs/updated
      Kasa devices (fill in the Tapo account email/password too)
 4. Click that row's **Test** button to confirm it authenticates.

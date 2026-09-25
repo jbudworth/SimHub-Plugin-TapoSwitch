@@ -49,8 +49,10 @@ namespace SimHub.Plugin.TapoSwitch.Tapo
             // with a body. When the server just ignores it instead of responding,
             // .NET Framework's HttpClientHandler (which is backed by HttpWebRequest)
             // can stall noticeably before giving up and sending the body anyway.
-            // Disabling it globally avoids that stall for every request.
-            ServicePointManager.Expect100Continue = false;
+            // Disable it only for this device's ServicePoint - setting the static
+            // ServicePointManager.Expect100Continue would silently change HTTP
+            // behavior for all of SimHub and every other plugin in the process.
+            ServicePointManager.FindServicePoint(AppUrl).Expect100Continue = false;
 
             _cookies = new CookieContainer();
             _handler = new HttpClientHandler

@@ -26,7 +26,7 @@ namespace SimHub.Plugin.TapoSwitch.Tapo
     {
         private readonly string _host;
         private readonly int _port;
-        private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan IoTimeout = TimeSpan.FromSeconds(5);
 
         public LegacyKasaClient(string host, int port = 9999)
         {
@@ -73,33 +73,43 @@ namespace SimHub.Plugin.TapoSwitch.Tapo
             byte[] request = Encrypt(Encoding.UTF8.GetBytes(json));
 
             using (var tcp = new TcpClient())
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
-                var connectTask = tcp.ConnectAsync(_host, _port);
-                var delayTask = Task.Delay(ConnectTimeout, ct);
-                var completed = await Task.WhenAny(connectTask, delayTask).ConfigureAwait(false);
-                if (completed == delayTask)
+                // NetworkStream.ReadAsync ignores its CancellationToken on
+                // .NET Framework, so closing the socket is the only reliable
+                // way to abort a connect/read against a device that accepts
+                // the connection but never replies. The timeout covers the
+                // whole exchange, not just the connect.
+                timeout.CancelAfter(IoTimeout);
+                using (timeout.Token.Register(() => { try { tcp.Close(); } catch { } }))
                 {
-                    throw new TapoException(
-                        $"Timed out connecting to {_host}:{_port}. Check the IP address and that the " +
-                        "switch is powered on and reachable on the network.");
-                }
-                await connectTask.ConfigureAwait(false); // re-throw any connect exception (e.g. refused)
-
-                using (var stream = tcp.GetStream())
-                {
-                    await stream.WriteAsync(request, 0, request.Length, ct).ConfigureAwait(false);
-
-                    byte[] lengthBuffer = await ReadExactAsync(stream, 4, ct).ConfigureAwait(false);
-                    int length = (lengthBuffer[0] << 24) | (lengthBuffer[1] << 16)
-                               | (lengthBuffer[2] << 8) | lengthBuffer[3];
-                    if (length <= 0 || length > 65536)
+                    try
                     {
-                        throw new TapoException($"Device {_host} returned an implausible response length ({length}).");
-                    }
+                        await tcp.ConnectAsync(_host, _port).ConfigureAwait(false);
 
-                    byte[] body = await ReadExactAsync(stream, length, ct).ConfigureAwait(false);
-                    string responseJson = Encoding.UTF8.GetString(Decrypt(body));
-                    return JObject.Parse(responseJson);
+                        using (var stream = tcp.GetStream())
+                        {
+                            await stream.WriteAsync(request, 0, request.Length, ct).ConfigureAwait(false);
+
+                            byte[] lengthBuffer = await ReadExactAsync(stream, 4, ct).ConfigureAwait(false);
+                            int length = (lengthBuffer[0] << 24) | (lengthBuffer[1] << 16)
+                                       | (lengthBuffer[2] << 8) | lengthBuffer[3];
+                            if (length <= 0 || length > 65536)
+                            {
+                                throw new TapoException($"Device {_host} returned an implausible response length ({length}).");
+                            }
+
+                            byte[] body = await ReadExactAsync(stream, length, ct).ConfigureAwait(false);
+                            string responseJson = Encoding.UTF8.GetString(Decrypt(body));
+                            return JObject.Parse(responseJson);
+                        }
+                    }
+                    catch (Exception ex) when (timeout.IsCancellationRequested && !ct.IsCancellationRequested)
+                    {
+                        throw new TapoException(
+                            $"Timed out communicating with {_host}:{_port}. Check the IP address and that the " +
+                            "switch is powered on and reachable on the network.", ex);
+                    }
                 }
             }
         }

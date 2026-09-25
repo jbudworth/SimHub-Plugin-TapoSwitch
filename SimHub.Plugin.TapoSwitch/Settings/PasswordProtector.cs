@@ -34,13 +34,16 @@ namespace SimHub.Plugin.TapoSwitch.Settings
                 byte[] cipherBytes = ProtectedData.Protect(plainBytes, Entropy, DataProtectionScope.CurrentUser);
                 return Convert.ToBase64String(cipherBytes);
             }
-            catch
+            catch (Exception ex)
             {
                 // DPAPI can fail in unusual hosting scenarios (e.g. a service
                 // account with no loaded user profile). Falling back to
                 // storing the plaintext keeps the plugin working rather than
                 // silently losing the saved credential; Unprotect() below
                 // will happily hand back a value that fails DPAPI decoding.
+                SimHub.Logging.Current.Warn(
+                    "SimHub.Plugin.TapoSwitch: DPAPI encryption failed; the password will be stored " +
+                    "unencrypted in the SimHub settings file.", ex);
                 return plainText;
             }
         }

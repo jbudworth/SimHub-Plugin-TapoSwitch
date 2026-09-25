@@ -7,5 +7,5 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyProduct("SimHub.Plugin.TapoSwitch")]
 [assembly: AssemblyCopyright("Copyright © 2026 jbudworth")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("0.9.0.0")]
-[assembly: AssemblyFileVersion("0.9.0.0")]
+[assembly: AssemblyVersion("0.9.1.0")]
+[assembly: AssemblyFileVersion("0.9.1.0")]

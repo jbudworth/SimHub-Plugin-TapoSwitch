@@ -68,7 +68,13 @@ namespace SimHub.Plugin.TapoSwitch
             RegisterActionsForAllDevices();
 
             var intervalMs = Math.Max(5, _settings.PollingIntervalSeconds) * 1000;
-            _pollTimer = new Timer(_ => PollAllDevices(), null, 2000, intervalMs);
+            // An unhandled exception on a timer thread terminates the whole
+            // process on .NET Framework, so nothing may escape this callback.
+            _pollTimer = new Timer(_ =>
+            {
+                try { PollAllDevices(); }
+                catch (Exception ex) { SimHub.Logging.Current.Warn("SimHub.Plugin.TapoSwitch: poll tick failed.", ex); }
+            }, null, 2000, intervalMs);
         }
 
         public void End(PluginManager pluginManager)
@@ -79,7 +85,10 @@ namespace SimHub.Plugin.TapoSwitch
 
             lock (_clientsLock)
             {
-                foreach (var client in _clients.Values) client.Dispose();
+                foreach (var client in _clients.Values)
+                {
+                    try { client.Dispose(); } catch { /* in-flight request may still hold the client */ }
+                }
                 _clients.Clear();
             }
         }
@@ -111,13 +120,26 @@ namespace SimHub.Plugin.TapoSwitch
         {
             this.SaveCommonSettings(SettingsKey, _settings);
 
-            // Drop any cached clients so edited credentials/IPs take effect
-            // on the next action or poll.
+            // Drop cached clients so edited credentials/IPs take effect on the
+            // next action or poll, but defer the actual Dispose past the longest
+            // client timeout so an in-flight poll/action doesn't get an
+            // ObjectDisposedException mid-request.
+            List<ISmartSwitchClient> oldClients;
             lock (_clientsLock)
             {
-                foreach (var client in _clients.Values) client.Dispose();
+                oldClients = _clients.Values.ToList();
                 _clients.Clear();
             }
+            _ = Task.Delay(TimeSpan.FromSeconds(12)).ContinueWith(_ =>
+            {
+                foreach (var client in oldClients)
+                {
+                    try { client.Dispose(); } catch { }
+                }
+            });
+
+            var intervalMs = Math.Max(5, _settings.PollingIntervalSeconds) * 1000;
+            _pollTimer?.Change(intervalMs, intervalMs);
 
             RegisterActionsForAllDevices();
             PollAllDevices();
@@ -222,54 +244,112 @@ namespace SimHub.Plugin.TapoSwitch
 
         private void RegisterActionsForAllDevices()
         {
+            // Two names that sanitize identically ("My Desk"/"My_Desk", or two
+            // blank names) must not share action names, or one device's actions
+            // would silently control the other.
+            var usedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var device in _settings.Devices.ToList())
             {
-                RegisterActionsForDevice(device);
+                string group = SanitizeForActionName(device.Name);
+                string unique = group;
+                int n = 2;
+                while (!usedGroups.Add(unique)) unique = $"{group}_{n++}";
+                RegisterActionsForDevice(device, unique);
             }
         }
 
-        private void RegisterActionsForDevice(TapoDeviceConfig device)
+        private void RegisterActionsForDevice(TapoDeviceConfig device, string group)
         {
-            string group = SanitizeForActionName(device.Name);
+            // Closures capture only the device Id and resolve the current config
+            // at fire time: registrations can't be removed once added, so a
+            // renamed/removed device would otherwise leave live actions bound to
+            // a stale TapoDeviceConfig instance.
+            string deviceId = device.Id;
 
-            this.AddAction($"TapoSwitch.{group}.TurnOn", (pm, actionName) =>
+            try
             {
-                FireAndForget(async () =>
+                this.AddAction($"TapoSwitch.{group}.TurnOn", (pm, actionName) =>
                 {
-                    var client = GetOrCreateClient(device);
-                    await client.SetOnAsync(true).ConfigureAwait(false);
-                    device.LastStatus = "ON";
+                    FireAndForget(async () =>
+                    {
+                        var dev = FindDevice(deviceId);
+                        if (dev == null) return;
+                        var client = GetOrCreateClient(dev);
+                        await client.SetOnAsync(true).ConfigureAwait(false);
+                        dev.LastStatus = "ON";
+                    });
                 });
-            });
 
-            this.AddAction($"TapoSwitch.{group}.TurnOff", (pm, actionName) =>
+                this.AddAction($"TapoSwitch.{group}.TurnOff", (pm, actionName) =>
+                {
+                    FireAndForget(async () =>
+                    {
+                        var dev = FindDevice(deviceId);
+                        if (dev == null) return;
+                        var client = GetOrCreateClient(dev);
+                        await client.SetOnAsync(false).ConfigureAwait(false);
+                        dev.LastStatus = "OFF";
+                    });
+                });
+
+                this.AddAction($"TapoSwitch.{group}.Toggle", (pm, actionName) =>
+                {
+                    FireAndForget(async () =>
+                    {
+                        var dev = FindDevice(deviceId);
+                        if (dev == null) return;
+                        var client = GetOrCreateClient(dev);
+                        bool nowOn = await client.ToggleAsync().ConfigureAwait(false);
+                        dev.LastStatus = nowOn ? "ON" : "OFF";
+                    });
+                });
+
+                // Exposes e.g. TapoSwitch.MyDesk.State as a usable SimHub property
+                // (dashboards, formulas, other plugins). "Connected - ON" is what
+                // the settings screen's Test button reports.
+                this.AttachDelegate($"TapoSwitch.{group}.State", () =>
+                {
+                    var dev = FindDevice(deviceId);
+                    return dev != null && (dev.LastStatus == "ON" || dev.LastStatus == "Connected - ON");
+                });
+            }
+            catch (Exception ex)
             {
-                FireAndForget(async () =>
-                {
-                    var client = GetOrCreateClient(device);
-                    await client.SetOnAsync(false).ConfigureAwait(false);
-                    device.LastStatus = "OFF";
-                });
-            });
+                // Re-registering an existing action/property name on save can
+                // throw on some SimHub versions; the original registration keeps
+                // working via the Id lookup above, so don't fail the whole save.
+                SimHub.Logging.Current.Debug($"SimHub.Plugin.TapoSwitch: re-registration for '{device.Name}' skipped: {ex.Message}");
+            }
+        }
 
-            this.AddAction($"TapoSwitch.{group}.Toggle", (pm, actionName) =>
+        private TapoDeviceConfig FindDevice(string id)
+        {
+            try
             {
-                FireAndForget(async () =>
-                {
-                    var client = GetOrCreateClient(device);
-                    bool nowOn = await client.ToggleAsync().ConfigureAwait(false);
-                    device.LastStatus = nowOn ? "ON" : "OFF";
-                });
-            });
-
-            // Exposes e.g. TapoSwitch.MyDesk.State as a usable SimHub property
-            // (dashboards, formulas, other plugins).
-            this.AttachDelegate($"TapoSwitch.{group}.State", () => device.LastStatus == "ON");
+                return _settings.Devices.FirstOrDefault(d => d.Id == id);
+            }
+            catch (InvalidOperationException)
+            {
+                // Collection mutated by the UI thread mid-enumeration.
+                return null;
+            }
         }
 
         private void PollAllDevices()
         {
-            foreach (var device in _settings.Devices.ToList())
+            List<TapoDeviceConfig> devices;
+            try
+            {
+                // Snapshot: the UI thread can mutate this ObservableCollection
+                // while we run on a timer thread. Skip the tick on a clash.
+                devices = _settings.Devices.ToList();
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+
+            foreach (var device in devices)
             {
                 if (string.IsNullOrWhiteSpace(device.IpAddress)) continue;
 

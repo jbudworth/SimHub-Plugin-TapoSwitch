@@ -4,6 +4,8 @@ Controls TP-Link wifi smart plugs from SimHub's **Controls and Events**
 screen, so you can turn a switch on/off/toggle from a button box, keyboard
 shortcut, wheel button, or any SimHub event/trigger.
 
+![Settings](imgs/TapoSwitchControl_Settings.png)
+
 Supports **two device generations**, selectable per switch in the settings
 screen:
 
